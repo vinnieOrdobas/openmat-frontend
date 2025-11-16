@@ -2,13 +2,10 @@ import React from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import useAuth from './context/useAuth.js';
 
-// --- 1. Import our REAL components ---
+// --- 1. Import all our REAL components ---
 import LoginPage from './pages/LoginPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
-
-// --- 2. Keep this as a placeholder for now ---
-const AcademyListPage = () => <h2>Academy List Page</h2>;
-
+import AcademyListPage from './pages/AcademyListPage.jsx';
 
 function App() {
   const { isLoggedIn, user, logout } = useAuth();
@@ -40,9 +37,9 @@ function App() {
 
       <main style={{ padding: '1rem' }}>
         <Routes>
+          {/* --- 2. Use the REAL component here --- */}
           <Route path="/" element={<AcademyListPage />} />
           <Route path="/login" element={<LoginPage />} />
-          {/* --- 3. This now uses our real ProfilePage component --- */}
           <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </main>

@@ -2,10 +2,10 @@ import React from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import useAuth from './context/useAuth.js';
 
-// --- 1. Import all our REAL components ---
 import LoginPage from './pages/LoginPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import AcademyListPage from './pages/AcademyListPage.jsx';
+import AcademyDetailPage from './pages/AcademyDetailPage.jsx';
 
 function App() {
   const { isLoggedIn, user, logout } = useAuth();
@@ -13,11 +13,12 @@ function App() {
 
   const handleLogout = () => {
     logout();
-    navigate('/login'); // Redirect to login after logout
+    navigate('/login');
   };
 
   return (
     <div>
+      {/* --- Navigation (no changes) --- */}
       <nav style={{ padding: '1rem', background: '#eee', display: 'flex', justifyContent: 'space-between' }}>
         <div>
           <Link to="/" style={{ marginRight: '1rem' }}>Home (Academies)</Link>
@@ -35,12 +36,18 @@ function App() {
         </div>
       </nav>
 
+      {/* --- Page Content Area --- */}
       <main style={{ padding: '1rem' }}>
         <Routes>
-          {/* --- 2. Use the REAL component here --- */}
           <Route path="/" element={<AcademyListPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          
+          {/* --- 3. ADD THIS NEW ROUTE --- */}
+          {/* This is a "dynamic route". The ':id' is a placeholder. */}
+          {/* It will match /academies/1, /academies/2, etc. */}
+          <Route path="/academies/:id" element={<AcademyDetailPage />} />
+          
         </Routes>
       </main>
     </div>

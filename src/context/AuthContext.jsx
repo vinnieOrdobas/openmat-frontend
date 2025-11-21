@@ -20,34 +20,24 @@ function AuthProvider({ children }) {
     setUser(null);
   };
 
-  // --- THIS IS THE CORRECTED BLOCK ---
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        // Only run this if we have a token
         if (token) {
           apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           const response = await apiClient.get('/profile');
           setUser(response.data); // Save user data
         }
       } catch (err) {
-        // If token is invalid or expired
         console.error("Invalid token, logging out.", err);
         logout();
-      } finally {
-        // --- THIS IS THE FIX ---
-        // This 'finally' block will run *no matter what*:
-        // - if 'token' was null
-        // - if 'try' succeeded
-        // - if 'catch' ran
-        // This guarantees we always stop loading.
+      } finally { 
         setLoading(false);
       }
     };
 
     fetchUser();
   }, [token]);
-  // --- END CORRECTED BLOCK ---
 
 
   // --- Login Function ---
@@ -60,13 +50,14 @@ function AuthProvider({ children }) {
     
     localStorage.setItem('token', token);
     apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    
-    // We set the token, which triggers the 'useEffect' above
-    // to run again, which will fetch the profile and set the user.
+  
     setToken(token); 
   };
+  
+  const updateUser = (userData) => {
+    setUser(userData);
+  };
 
-  // 3. The value our app will consume
   const value = {
     token,
     user,
@@ -74,16 +65,11 @@ function AuthProvider({ children }) {
     loading,
     login,
     logout,
+    updateUser,
   };
 
-  // 4. The Render
   return (
     <AuthContext.Provider value={value}>
-      {/* Now, this works:
-        1. Initial render: loading=true, shows nothing.
-        2. useEffect runs, hits 'finally', calls setLoading(false).
-        3. Re-renders: loading=false, shows children (the app).
-      */}
       {!loading && children}
     </AuthContext.Provider>
   );

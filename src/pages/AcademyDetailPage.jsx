@@ -6,9 +6,8 @@ import Modal from '../components/Modal.jsx';
 
 const BASE_URL = 'https://openmat-api.onrender.com';
 
-// ... (ImageDisplay and ScheduleDisplay remain the same - keeping them short here) ...
+// ... (ImageDisplay remains the same) ...
 const ImageDisplay = ({ logo, photos, academyName }) => {
-  /* ... same code as before ... */
   const [selectedImageUrl, setSelectedImageUrl] = useState(null);
   const galleryImages = photos || [];
   const hasPhotos = galleryImages.length > 0;
@@ -36,8 +35,8 @@ const ImageDisplay = ({ logo, photos, academyName }) => {
   );
 };
 
+// ... (ScheduleDisplay remains the same) ...
 const ScheduleDisplay = ({ schedules, onBook }) => {
-  /* ... same code as before ... */
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const groupedSchedules = schedules.reduce((acc, schedule) => {
     const day = days[schedule.day_of_week];
@@ -68,6 +67,47 @@ const ScheduleDisplay = ({ schedules, onBook }) => {
   );
 };
 
+// --- NEW: Review Form Component ---
+const ReviewForm = ({ onSubmit, onCancel }) => {
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({ rating, comment });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} style={{ background: '#f0f7ff', padding: '1rem', borderRadius: '8px', marginBottom: '1rem', border: '1px solid #cce5ff' }}>
+      <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Write a Review</h4>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.25rem' }}>Rating:</label>
+        <select value={rating} onChange={(e) => setRating(parseInt(e.target.value))} style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}>
+          <option value="5">5 Stars - Excellent</option>
+          <option value="4">4 Stars - Good</option>
+          <option value="3">3 Stars - Average</option>
+          <option value="2">2 Stars - Poor</option>
+          <option value="1">1 Star - Terrible</option>
+        </select>
+      </div>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <label style={{ display: 'block', fontSize: '0.9rem', marginBottom: '0.25rem' }}>Comment:</label>
+        <textarea 
+          value={comment} 
+          onChange={(e) => setComment(e.target.value)} 
+          rows="3"
+          required
+          placeholder="Share your experience..."
+          style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={onCancel} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+        <button type="submit" style={{ padding: '0.5rem 1rem', background: '#003580', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Post Review</button>
+      </div>
+    </form>
+  );
+};
 
 function AcademyDetailPage() {
   const { id } = useParams(); 
@@ -75,49 +115,46 @@ function AcademyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
+  // --- NEW: Review Form State ---
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  
   const { user } = useAuth();
   const navigate = useNavigate();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalConfig, setModalConfig] = useState({ title: '', message: '', actions: null });
 
+  // Extracted fetch function so we can reload data after a review
+  const fetchAcademy = async () => {
+    try {
+      // Don't set global loading on refresh, just initial load
+      if (!academy) setLoading(true); 
+      const response = await apiClient.get(`/academies/${id}`);
+      setAcademy(response.data);
+    } catch (err) {
+      setError('Failed to fetch academy details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchAcademy = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await apiClient.get(`/academies/${id}`);
-        setAcademy(response.data);
-      } catch (err) {
-        setError('Failed to fetch academy details.');
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchAcademy();
   }, [id]);
-
-  // --- Helper Functions ---
 
   const showAlert = (title, message) => {
     setModalConfig({
       title,
       message,
-      actions: (
-        <button onClick={() => setModalOpen(false)} style={{ padding: '0.5rem 1rem', background: '#003580', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>OK</button>
-      )
+      actions: <button onClick={() => setModalOpen(false)} style={{ padding: '0.5rem 1rem', background: '#003580', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>OK</button>
     });
     setModalOpen(true);
   };
 
-  // --- Execution Functions (Defined FIRST) ---
-
   const executeBuyPass = async (passId) => {
     try {
       setModalOpen(false);
-      await apiClient.post('/orders', {
-        order: { cart_items: [{ pass_id: passId, quantity: 1 }] }
-      });
+      await apiClient.post('/orders', { order: { cart_items: [{ pass_id: passId, quantity: 1 }] } });
       navigate('/orders'); 
     } catch (err) {
       showAlert("Order Failed", err.response?.data?.errors || "Unknown error");
@@ -133,8 +170,6 @@ function AcademyDetailPage() {
       showAlert("Booking Failed", err.response?.data?.errors || "Unknown error. Do you have an active pass?");
     }
   };
-
-  // --- Modal Triggers (Defined SECOND, using Execution functions) ---
 
   const confirmBuyPass = (passId) => {
     setModalConfig({
@@ -164,18 +199,26 @@ function AcademyDetailPage() {
     setModalOpen(true);
   };
 
-  // --- Handlers ---
-
   const handleBuyPass = (passId) => {
-    console.log("Add to Order clicked for pass:", passId); // Debug log
     if (!user) return navigate('/login');
     confirmBuyPass(passId);
   };
 
   const handleBookClass = (scheduleId) => {
-    console.log("Book Class clicked for schedule:", scheduleId); // Debug log
     if (!user) return navigate('/login');
     confirmBooking(scheduleId);
+  };
+
+  // --- NEW: Handle Review Submission ---
+  const handleReviewSubmit = async (reviewData) => {
+    try {
+      await apiClient.post(`/academies/${id}/reviews`, { review: reviewData });
+      setShowReviewForm(false);
+      showAlert("Success", "Thank you for your review!");
+      fetchAcademy(); // Reload data to see new review and rating
+    } catch (err) {
+      showAlert("Review Failed", err.response?.data?.errors?.join(", ") || "Unknown error");
+    }
   };
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
@@ -184,15 +227,7 @@ function AcademyDetailPage() {
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '1rem' }}>
-      {/* Modal is rendered at the top level */}
-      <Modal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)}
-        title={modalConfig.title}
-        actions={modalConfig.actions}
-      >
-        {modalConfig.message}
-      </Modal>
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={modalConfig.title} actions={modalConfig.actions}>{modalConfig.message}</Modal>
 
       <Link to="/" style={{ display: 'inline-block', marginBottom: '1rem', color: '#666', textDecoration: 'none' }}>&larr; Back to all academies</Link>
       
@@ -228,7 +263,24 @@ function AcademyDetailPage() {
             </div>
           </section>
           <section>
-            <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Reviews</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0 }}>Reviews</h3>
+              {/* --- NEW: Add Review Button --- */}
+              {user && !showReviewForm && (
+                <button 
+                  onClick={() => setShowReviewForm(true)}
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', background: 'white', border: '1px solid #003580', color: '#003580', borderRadius: '6px', cursor: 'pointer' }}
+                >
+                  Write a Review
+                </button>
+              )}
+            </div>
+
+            {/* --- NEW: Review Form --- */}
+            {showReviewForm && (
+              <ReviewForm onSubmit={handleReviewSubmit} onCancel={() => setShowReviewForm(false)} />
+            )}
+
             {academy.reviews.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 {academy.reviews.map(review => (
@@ -264,12 +316,7 @@ function AcademyDetailPage() {
                       <span style={{ color: '#003580', fontWeight: 'bold' }}>${(pass.price_cents / 100).toFixed(2)}</span>
                     </div>
                     <p style={{ fontSize: '0.9rem', color: '#666', margin: '0 0 1rem 0' }}>{pass.description}</p>
-                    <button 
-                      onClick={() => handleBuyPass(pass.id)}
-                      style={{ width: '100%', padding: '0.75rem', background: '#003580', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      Add to Order
-                    </button>
+                    <button onClick={() => handleBuyPass(pass.id)} style={{ width: '100%', padding: '0.75rem', background: '#003580', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Add to Order</button>
                   </div>
                 ))}
               </div>

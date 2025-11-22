@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../services/apiClient.js'; 
 import { Link } from 'react-router-dom'; 
 
 const BASE_URL = 'https://openmat-api.onrender.com';
 
-// Helper constants for dropdowns
+// Helper constants
 const DAYS = [
   { value: '0', label: 'Sunday' },
   { value: '1', label: 'Monday' },
@@ -23,27 +23,122 @@ const PASS_TYPES = [
   { value: 'punch_card', label: 'Punch Card' },
 ];
 
+// --- Internal Component: Multi-Select Dropdown ---
+// This allows selecting multiple items nicely
+const MultiSelectDropdown = ({ label, options, selectedValues, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close if clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const toggleOption = (value) => {
+    const newValues = selectedValues.includes(value)
+      ? selectedValues.filter(v => v !== value)
+      : [...selectedValues, value];
+    onChange(newValues);
+  };
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', flex: '1 1 200px' }}>
+      <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', fontWeight: 'bold', color: '#555' }}>
+        {label}
+      </label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          padding: '0.75rem',
+          borderRadius: '4px',
+          border: '1px solid #ccc',
+          backgroundColor: 'white',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {selectedValues.length === 0 
+            ? 'Select...' 
+            : `${selectedValues.length} selected`}
+        </span>
+        <span style={{ fontSize: '0.8rem' }}>▼</span>
+      </div>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          right: 0,
+          zIndex: 10,
+          backgroundColor: 'white',
+          border: '1px solid #ccc',
+          borderRadius: '4px',
+          marginTop: '4px',
+          maxHeight: '200px',
+          overflowY: 'auto',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+        }}>
+          {options.map(opt => (
+            <div 
+              key={opt.value} 
+              onClick={() => toggleOption(opt.value)}
+              style={{
+                padding: '0.5rem',
+                cursor: 'pointer',
+                borderBottom: '1px solid #f0f0f0',
+                backgroundColor: selectedValues.includes(opt.value) ? '#f0f9ff' : 'white',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              <input 
+                type="checkbox" 
+                checked={selectedValues.includes(opt.value)} 
+                readOnly
+                style={{ pointerEvents: 'none' }} 
+              />
+              <span style={{ fontSize: '0.9rem' }}>{opt.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 function AcademyListPage() {
-  // --- Data State ---
   const [academies, setAcademies] = useState([]);
-  const [amenities, setAmenities] = useState([]); 
-  const [countries, setCountries] = useState([]); // <--- NEW: Store countries
+  
+  // Options State
+  const [amenityOptions, setAmenityOptions] = useState([]); 
+  const [countryOptions, setCountryOptions] = useState([]); 
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // --- Search & Filter States ---
-  const [searchTerm, setSearchTerm] = useState(''); // Smart Search
-  const [selectedAmenity, setSelectedAmenity] = useState('');
-  const [selectedPassType, setSelectedPassType] = useState(''); 
-  const [selectedClassDay, setSelectedClassDay] = useState('');
-  const [selectedCountry, setSelectedCountry] = useState(''); // <--- NEW: Country Filter
+  // --- Search & Filter States (Arrays for Multi-select) ---
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAmenities, setSelectedAmenities] = useState([]);
+  const [selectedPassTypes, setSelectedPassTypes] = useState([]); 
+  const [selectedClassDays, setSelectedClassDays] = useState([]);
+  const [selectedCountries, setSelectedCountries] = useState([]);
 
-  // --- Initial Data Load ---
   useEffect(() => {
     const initData = async () => {
       try {
         setLoading(true);
-        // Fetch Academies, Amenities, AND Countries in parallel
         const [academiesRes, amenitiesRes, countriesRes] = await Promise.all([
           apiClient.get('/academies'),
           apiClient.get('/amenities'),
@@ -51,8 +146,13 @@ function AcademyListPage() {
         ]);
         
         setAcademies(academiesRes.data);
-        setAmenities(amenitiesRes.data);
-        setCountries(countriesRes.data);
+        
+        // Transform amenities for dropdown
+        setAmenityOptions(amenitiesRes.data.map(a => ({ value: a.id.toString(), label: a.name })));
+        
+        // Transform countries (API returns { value, label } objects already)
+        setCountryOptions(countriesRes.data);
+        
       } catch (err) {
         setError('Failed to load data.');
         console.error(err);
@@ -64,16 +164,11 @@ function AcademyListPage() {
     initData();
   }, []);
 
-  // --- Filter Logic ---
   const fetchAcademies = async (params = {}) => {
     try {
       setLoading(true);
-      // Filter out empty values to keep URL clean
-      const cleanParams = Object.fromEntries(
-        Object.entries(params).filter(([_, v]) => v !== '' && v !== null)
-      );
-      
-      const response = await apiClient.get('/academies', { params: cleanParams });
+      // Axios handles arrays correctly as 'key[]=value'
+      const response = await apiClient.get('/academies', { params });
       setAcademies(response.data);
     } catch (err) {
       console.error(err);
@@ -84,23 +179,36 @@ function AcademyListPage() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchAcademies({ 
-      term: searchTerm, // Smart Search
-      amenity_id: selectedAmenity,
-      pass_type: selectedPassType,
-      class_day: selectedClassDay,
-      country: selectedCountry
+    
+    // Map state to backend param names (plural)
+    const params = { 
+      term: searchTerm,
+      amenity_ids: selectedAmenities,
+      pass_types: selectedPassTypes,
+      class_days: selectedClassDays,
+      countries: selectedCountries // Map to backend 'country_ids'
+    };
+
+    // Clean empty arrays
+    Object.keys(params).forEach(key => {
+      if (Array.isArray(params[key]) && params[key].length === 0) {
+        delete params[key];
+      }
     });
+
+    fetchAcademies(params);
   };
 
   const handleClear = () => {
     setSearchTerm('');
-    setSelectedAmenity('');
-    setSelectedPassType('');
-    setSelectedClassDay('');
-    setSelectedCountry('');
-    fetchAcademies();
+    setSelectedAmenities([]);
+    setSelectedPassTypes([]);
+    setSelectedClassDays([]);
+    setSelectedCountries([]);
+    fetchAcademies(); // Fetch all
   };
+
+  const hasFilters = searchTerm || selectedAmenities.length > 0 || selectedPassTypes.length > 0 || selectedClassDays.length > 0 || selectedCountries.length > 0;
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading academies...</div>;
   if (error) return <div style={{ color: 'red', padding: '2rem' }}>{error}</div>;
@@ -112,7 +220,7 @@ function AcademyListPage() {
       <div style={{ marginBottom: '2rem', background: '#fff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #eee' }}>
         <h2 style={{ marginBottom: '1rem', marginTop: 0, color: '#111' }}>Find an Academy</h2>
         
-        <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           
           {/* Row 1: Smart Search Bar */}
           <div style={{ position: 'relative' }}>
@@ -126,56 +234,37 @@ function AcademyListPage() {
             />
           </div>
 
-          {/* Row 2: Filters Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+          {/* Row 2: Multi-Select Filters */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
             
-            {/* Country Filter */}
-            <select
-              value={selectedCountry}
-              onChange={(e) => setSelectedCountry(e.target.value)}
-              style={{ padding: '0.75rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: 'white' }}
-            >
-              <option value="">All Countries</option>
-              {countries.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
+            <MultiSelectDropdown 
+              label="Countries" 
+              options={countryOptions} 
+              selectedValues={selectedCountries} 
+              onChange={setSelectedCountries} 
+            />
 
-            {/* Amenity Filter */}
-            <select
-              value={selectedAmenity}
-              onChange={(e) => setSelectedAmenity(e.target.value)}
-              style={{ padding: '0.75rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: 'white' }}
-            >
-              <option value="">All Amenities</option>
-              {amenities.map(amenity => (
-                <option key={amenity.id} value={amenity.id}>{amenity.name}</option>
-              ))}
-            </select>
+            <MultiSelectDropdown 
+              label="Amenities" 
+              options={amenityOptions} 
+              selectedValues={selectedAmenities} 
+              onChange={setSelectedAmenities} 
+            />
 
-            {/* Pass Type Filter */}
-            <select
-              value={selectedPassType}
-              onChange={(e) => setSelectedPassType(e.target.value)}
-              style={{ padding: '0.75rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: 'white' }}
-            >
-              <option value="">All Pass Types</option>
-              {PASS_TYPES.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
+            <MultiSelectDropdown 
+              label="Pass Types" 
+              options={PASS_TYPES} 
+              selectedValues={selectedPassTypes} 
+              onChange={setSelectedPassTypes} 
+            />
 
-            {/* Class Day Filter */}
-            <select
-              value={selectedClassDay}
-              onChange={(e) => setSelectedClassDay(e.target.value)}
-              style={{ padding: '0.75rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: 'white' }}
-            >
-              <option value="">Any Day</option>
-              {DAYS.map(day => (
-                <option key={day.value} value={day.value}>{day.label}</option>
-              ))}
-            </select>
+            <MultiSelectDropdown 
+              label="Class Days" 
+              options={DAYS} 
+              selectedValues={selectedClassDays} 
+              onChange={setSelectedClassDays} 
+            />
+
           </div>
 
           {/* Row 3: Actions */}
@@ -184,7 +273,7 @@ function AcademyListPage() {
               Search
             </button>
             
-            {(searchTerm || selectedAmenity || selectedPassType || selectedClassDay || selectedCountry) && (
+            {hasFilters && (
               <button type="button" onClick={handleClear} style={{ padding: '0.75rem 1rem', background: '#f0f0f0', color: '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>
                 Clear Filters
               </button>
@@ -193,7 +282,7 @@ function AcademyListPage() {
         </form>
       </div>
 
-      {/* --- List Section (Unchanged) --- */}
+      {/* --- List Section --- */}
       {academies.length > 0 ? (
         <div style={{ display: 'grid', gap: '1.5rem', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
           {academies.map((academy) => {
